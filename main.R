@@ -1,6 +1,7 @@
 library(polars)
 library(optparse)
 library(itertools)
+library(future.apply)
 source('./files.R')
 source('./impute.R')
 source('./missing.R')
@@ -160,13 +161,13 @@ if (length(results) <= batch_limit) {
     print("Batch mode OFF") 
     if (opt$streaming == TRUE) {
         print("Collecting results in streaming mode")
-        dfs <- lapply(results, function(result) result$collect(streaming = TRUE))
-        lapply(dfs, save_files, outpath = opt$output)
+        dfs <- future_lapply(results, function(result) result$collect(streaming = TRUE))   ## NEED TO TEST future_lapply() against lapply()
+        future_lapply(dfs, save_files, outpath = opt$output)
         print("All files saved")
     } else {
         print("Collecting results")
-        dfs <- lapply(results, function(result) result$collect())
-        lapply(dfs, save_files, outpath = opt$output)
+        dfs <- future_lapply(results, function(result) result$collect())
+        future_lapply(dfs, save_files, outpath = opt$output)
         print("All files saved")
     }
 
@@ -176,13 +177,13 @@ if (length(results) <= batch_limit) {
     while (ihasNext(batch)) {
         if (opt$streaming == TRUE) {
             print("Collecting batches of results in streaming mode")
-            dfs <- lapply(batch, function(result) result$collect(streaming = TRUE))
-            lapply(dfs, save_files, outpath = opt$output)
+            dfs <- future_lapply(batch, function(result) result$collect(streaming = TRUE))
+            future_lapply(dfs, save_files, outpath = opt$output)
             print("All files saved")
         } else {
             print("Collecting batches of results")
-            dfs <- lapply(batch, function(result) result$collect())
-            lapply(dfs, save_files, outpath = opt$output)
+            dfs <- future_lapply(batch, function(result) result$collect())
+            future_lapply(dfs, save_files, outpath = opt$output)
             print("All files saved")
         }
     }   
