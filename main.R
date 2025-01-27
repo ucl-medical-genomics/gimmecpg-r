@@ -1,7 +1,8 @@
 library(polars)
 library(optparse)
-library(itertools)
-library(future.apply)
+# library(itertools)
+# library(future.apply)
+library(h2o)
 source('./files.R')
 source('./impute.R')
 source('./missing.R')
@@ -48,17 +49,17 @@ option_list <- list(
                     action="store",
                     default=1000,
                     type='integer',
-                    help='Maximum distance between missing site and each neighbour for the site to be imputed. Default = all sites considered'),
+                    help='Maximum distance between missing site and each neighbour for the site to be imputed. Default = 1000 bp'),
     make_option(c('-k', '--collapse'),
-                    action="store",
-                    default=TRUE,
+                    action="store_false",
                     type='logical',
+                    default=TRUE,
                     help='Choose whether to merge methylation sites on opposite strands together. Default = True'),
     make_option(c('-x', '--machineLearning'),
-                    action="store",
-                    default=FALSE,
+                    action="store_true",
                     type='logical',
-                    help='Choose whether to use machine learning for imputation. Default = no machine learning'),
+                    default=FALSE,
+                    help='Choose whether to use machine learning for imputation. Default = False (no machine learning)'),
     make_option(c('-t', '--runTime'),
                     action="store",
                     default=3600,
@@ -66,13 +67,13 @@ option_list <- list(
                     help='Time (seconds) to train model. Default = 3600s (2h)'),
     make_option(c('-m', '--maxModels'),
                     action="store",
-                    default=NA,
+                    default=20,
                     type='integer',
                     help='Maximum number of models to train within the time specified under --runTime. Excludes Stacked Ensemble models'),
     make_option(c('-s', '--streaming'),
-                    action="store",
-                    default=FALSE,
+                    action="store_true",
                     type='logical',
+                    default=FALSE,
                     help='Choose if streaming is required (for files that exceed memory). Default = False')
 )
 
@@ -116,7 +117,7 @@ if (identical(bed_paths, character(0))) {
 
 
 print(paste("Merge methylation sites on opposite strands =", opt$collapse))
-print(paste("Coverage cutoff at ", opt$minCov))
+print(paste("Coverage cutoff at", opt$minCov))
 
 lf_list <- lapply(bed_paths, read_files, mincov = opt$minCov, collapse = opt$collapse)
 
@@ -151,8 +152,9 @@ if (opt$machineLearning == FALSE) {
     results <- imputed_lfs
 } else {
     print("machineLearning mode: prepare for H2O AutoML training")
-    lead_prediction <- lapply(missing, h2otraining, time = opt$runTime, models = opt$maxModels, dist = opt$maxDistance, streaming = opt$streaming)
+    lead_prediction <- lapply(missing, h2oTraining, maxTime = opt$runTime, maxModels = opt$maxModels, dist = opt$maxDistance, streaming = opt$streaming)
     results <- lead_prediction
+    h2o.shutdown(prompt = FALSE)
 }
 
 batch_limit <- 10
@@ -166,26 +168,27 @@ if (length(results) <= batch_limit) {
         print("All files saved")
     } else {
         print("Collecting results")
-        dfs <- future_lapply(results, function(result) result$collect())
-        future_lapply(dfs, save_files, outpath = opt$output)
+        dfs <- lapply(results, function(result) result$collect())  #future_lapply
+        lapply(dfs, save_files, outpath = opt$output) #future_lapply
         print("All files saved")
     }
 
 } else {
-    print(paste0("Batches of ", batch_limit))
-    batch <- ihasNext(isplitVector(results, chunkSize = batch_limit))
-    while (ihasNext(batch)) {
-        if (opt$streaming == TRUE) {
-            print("Collecting batches of results in streaming mode")
-            dfs <- future_lapply(batch, function(result) result$collect(streaming = TRUE))
-            future_lapply(dfs, save_files, outpath = opt$output)
-            print("All files saved")
-        } else {
-            print("Collecting batches of results")
-            dfs <- future_lapply(batch, function(result) result$collect())
-            future_lapply(dfs, save_files, outpath = opt$output)
-            print("All files saved")
-        }
-    }   
+    print(paste0("Batches of ", batch_limit)) ### Needs re-working ###
+    
+    # batch <- ihasNext(isplitVector(results, chunkSize = batch_limit))
+    # while (ihasNext(batch)) {
+    #     if (opt$streaming == TRUE) {
+    #         print("Collecting batches of results in streaming mode")
+    #         dfs <- future_lapply(batch, function(result) result$collect(streaming = TRUE))
+    #         future_lapply(dfs, save_files, outpath = opt$output)
+    #         print("All files saved")
+    #     } else {
+    #         print("Collecting batches of results")
+    #         dfs <- future_lapply(batch, function(result) result$collect())
+    #         future_lapply(dfs, save_files, outpath = opt$output)
+    #         print("All files saved")
+    #     }
+    # }   
 
 }

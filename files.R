@@ -10,8 +10,7 @@ collapse_strands <- function(bed) {
 
     joint <- pos$join(
             neg, left_on = c("chr", "end"), right_on = c("chr", "cStart"), how = "full", coalesce = TRUE
-    )
-    $with_columns(pl$concat_str(pl$col("strand"), pl$col("strand_right"), separator = "/", ignore_nulls = TRUE))
+    )$with_columns(pl$concat_str(pl$col("strand"), pl$col("strand_right"), separator = "/", ignore_nulls = TRUE))
 
     merged <- (
         joint$with_columns(
@@ -19,12 +18,10 @@ collapse_strands <- function(bed) {
             pl$col(c("percent_methylated_right", "coverage_right", "percent_methylated", "coverage"))
             $fill_null(0)
             $cast(pl$UInt64)
-        )
-        $with_columns(
+        )$with_columns(
             (pl$col("coverage") + pl$col("coverage_right"))$alias("total_coverage"),
             pl$when(pl$col("strand") == "-")$then(pl$col("start") - 1)$otherwise(pl$col("start"))$alias("start")
-        )
-        $filter(pl$col("total_coverage") > 0) # remove sites with no coverage
+        )$filter(pl$col("total_coverage") > 0) # remove sites with no coverage
         $with_columns(
             (
                 (
@@ -44,7 +41,7 @@ read_files <- function(file, mincov, collapse) {
     name <- basename(file)
     name <- gsub(pattern = ".bed", "", name)
     print(paste0("Scanning ", name))
-
+    
     bed <- (
         pl$scan_csv(
             file, 
@@ -59,19 +56,16 @@ read_files <- function(file, mincov, collapse) {
                 'column_10'= pl$UInt64, 
                 'column_11'= pl$UInt64
             )
-        )
-        $select(
-            list("column_1", "column_2", "column_3", "column_6", "column_10", "column_11")
-        ) # only select relevant columns
-        $rename(
+        )$select(
+            list("column_1", "column_2", "column_3", "column_6", "column_10", "column_11") # only select relevant columns
+        )$rename(
             column_1 = "chr", 
             column_2 = "start", 
             column_3 = "end", 
             column_6 = "strand", 
             column_10 = "coverage", 
-            column_11 = "percent_methylated"
-        ) # rename to something that makes more sense
-        $with_columns(
+            column_11 = "percent_methylated" # rename to something that makes more sense
+        )$with_columns(
             pl$col("chr")$str$replace("(?i)Chr", "") # remove "chr" from Chr column to match reference
         )
     )
@@ -93,7 +87,7 @@ read_files <- function(file, mincov, collapse) {
     ) # identify rows that go over 99 quantile
 
     data_cov_filt <- (
-        quants$filter((pl$col("total_coverage") >= mincov) & (pl$col("over") < 0)) # filter by coverage
+        quants$filter((pl$col("total_coverage") >= mincov) & (pl$col("over") < 0)) # filter by coverage 
         $with_columns(pl$lit(name)$alias("sample"))
         $select(list("chr", "start", "strand", "avg", "sample"))
         $cast(list(chr = pl$String, start = pl$UInt64, strand = pl$String, avg = pl$Float64, sample = pl$String))
