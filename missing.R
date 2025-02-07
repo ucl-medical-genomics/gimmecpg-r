@@ -1,6 +1,6 @@
 library(polars)
 
-missing_sites <- function(bed, ref, blacklist) {
+align_to_reference <- function(bed, ref, blacklist) {
 
     if (!is.na(blacklist)) {
 
@@ -37,11 +37,19 @@ missing_sites <- function(bed, ref, blacklist) {
         
     }
 
-    
-    missing <- ref$join(bed, on=c("chr", "start"), how="left")
+    aligned <- ref$join(bed, on=c("chr", "start"), how="left")
 
-    missing_mat <- (
-        missing$with_columns(
+    return(aligned)
+
+}
+
+
+missing_sites <- function(bed, ref, blacklist) {
+
+    aligned <- align_to_reference(bed, ref, blacklist)
+   
+    neighbours_added <- (
+        aligned$with_columns(
             pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("b_start"),
             pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("f_start"),
             pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("b_meth"),
@@ -54,9 +62,52 @@ missing_sites <- function(bed, ref, blacklist) {
         $with_columns(
             (pl$col("start") - pl$col("b_start"))$alias("b_dist"),
             (pl$col("f_start") - pl$col("start"))$alias("f_dist")
+        )$with_columns(
+            maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest")
+        )$with_columns(
+            over=pl$col("total_coverage") - pl$col("maxQuant")
+            # identify rows that go over 99 quantile
         )
     )
 
-    return(missing_mat)
+
+    missing_sites_defined <- neighbours_added$with_columns(
+        methylation = pl$col("avg"),
+        avg = pl$when(pl$col("total_coverage") < 10)$then(NA)$when(pl$col("over") >= 0)$then(NA)$otherwise("avg") # 
+        # "avg" is the column where we check if imputation needed or not; "methylation" column is final methylation value
+    )
+    
+
+    return(missing_sites_defined)
 
 }
+
+
+
+
+    # missing_labelled <- missing$with_columns(
+    #     methylation = pl$col("avg"),
+    #     avg = pl$when(pl$col("total_coverage") < 10)$then(NA)$otherwise("avg") # $when(pl$col("total_coverage") > 26)$then(NA)
+        
+    #     # "avg" is the column where we check if imputation needed or not; "methylation" column is final methylation value
+    # )$filter(pl$col("total_coverage") <= 26)
+    
+    
+
+
+    # missing_mat <- (
+    #     missing_labelled$with_columns(
+    #         pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("b_start"),
+    #         pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("f_start"),
+    #         pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("b_meth"),
+    #         pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("f_meth")
+    #     )
+    #     $with_columns(
+    #         pl$col(c("f_start", "f_meth"))$backward_fill()$over("chr"),
+    #         pl$col(c("b_start", "b_meth"))$forward_fill()$over("chr")
+    #     )
+    #     $with_columns(
+    #         (pl$col("start") - pl$col("b_start"))$alias("b_dist"),
+    #         (pl$col("f_start") - pl$col("start"))$alias("f_dist")
+    #     )
+    # )

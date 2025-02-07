@@ -9,20 +9,21 @@ fast_impute <- function(lf, dist) {
     }
 
     imputed <- lf$with_columns(
-        pl$col("avg")$fill_null(
+        pl$col("methylation")$fill_null(
             (pl$col("b_meth") * pl$col("f_dist") + pl$col("f_meth") * pl$col("b_dist"))
             / pl$sum_horizontal("f_dist", "b_dist")
         ),
         pl$col("sample")$fill_null(pl$lit("imputed"))
     )
 
-    imputed <- imputed$select(list("chr", "start", "end", "strand", "sample", "avg"))
+    imputed <- imputed$select(list("chr", "start", "end", "strand", "sample", "methylation"))
 
     return(imputed)
 
 }
 
 
+# distBins <- function(lf, col) {
 # distBins <- function(lf, col) {
 
 #     corrMat <- (
@@ -53,18 +54,20 @@ fast_impute <- function(lf, dist) {
 
 #     return(corrMat)
 # }
+#     return(corrMat)
+# }
 
 
 h2oPrep <- function(lf, dist, streaming) {
 
     known_sites <- (
-        lf$filter(pl$col("avg")$is_not_null())
-        $select(list("chr", "start", "avg")) #"end", 
+        lf$filter((pl$col("avg")$is_not_null()))  # any CpG site that is present in the original data, regardless of coverage, is considered "known". "Methylation" column will only be null if CpG site is in reference but not in original data
+        # $select(list("chr", "start", "methylation")) #"end", 
         $with_columns(
             pl$col("start")$shift(-1)$over("chr")$alias("f_start"),
             pl$col("start")$shift()$over("chr")$alias("b_start"),
-            pl$col("avg")$shift(-1)$over("chr")$alias("f_meth"),
-            pl$col("avg")$shift()$over("chr")$alias("b_meth")
+            pl$col("methylation")$shift(-1)$over("chr")$alias("f_meth"),
+            pl$col("methylation")$shift()$over("chr")$alias("b_meth")
         )
         $with_columns(
             (pl$col("start") - pl$col("b_start"))$alias("b_dist"), 
@@ -83,7 +86,11 @@ h2oPrep <- function(lf, dist, streaming) {
         # $filter(pl$col("error") < pl$col("limit"))
         
     )
-   
+    # a <- known_sites$collect()
+    # print(a)
+    # known_sites$collect()$write_csv("/home/nchai/NiuzhengChai/gimmecpg/outputs/training.bed", separator = "\t")
+    # quit()
+
     if (dist > 0) {
         known_sites <- known_sites$filter((pl$col("f_dist") <= dist) & (pl$col("b_dist") <= dist))
     }
@@ -111,6 +118,9 @@ h2oPrep <- function(lf, dist, streaming) {
         #     ((pl$col("f_dist") + 1)$log())$alias("lg_f_dist")
         # )
     )
+    # print(features_lf$collect())
+    missing_sites <- lf$filter((pl$col("avg")$is_null())) # "avg" is null when either site from reference not present in sample data, or if coverage < 10
+    # missing_sites <- lf$join(features_lf, on = c("chr", "start"), how="anti")
 
     missing_sites <- lf$filter(pl$col("avg")$is_null())
     
@@ -131,15 +141,16 @@ h2oPrep <- function(lf, dist, streaming) {
         #     ((pl$col("f_dist") + 1)$log())$alias("lg_f_dist")
         # )
     )
+
     # write.csv(as.data.frame(known_sites$fetch(10000)), "/home/nchai/projects/gimmecpg-r/train2.csv") 
     # quit()
 
     if (opt$streaming == TRUE) {
         features <- features_lf$collect(streaming=TRUE)
-        to_predict <- to_predict_lf$select(list("avg", "b_dist", "f_dist", "b_meth", "f_meth"))$collect(streaming=TRUE) #, "b_corr", "f_corr"
+        to_predict <- to_predict_lf$select(list("methylation", "b_dist", "f_dist", "b_meth", "f_meth"))$collect(streaming=TRUE) #, "b_corr", "f_corr"
     } else {
-        features <- features_lf$select(list("avg", "b_dist", "f_dist", "b_meth", "f_meth"))$collect() #$collect()
-        to_predict <- to_predict_lf$select(list("avg", "b_dist", "f_dist", "b_meth", "f_meth"))$collect() #, "b_corr", "f_corr"
+        features <- features_lf$select(list("methylation", "b_dist", "f_dist", "b_meth", "f_meth"))$collect() 
+        to_predict <- to_predict_lf$select(list("methylation", "b_dist", "f_dist", "b_meth", "f_meth"))$collect() #, "b_corr", "f_corr"
     }
 
    prepped <- list(features$to_data_frame(), to_predict$to_data_frame(), to_predict_lf)
@@ -161,10 +172,14 @@ h2oTraining <- function(lf, maxTime, maxModels, dist, streaming) {
 
     h2o.init(port = 54321, nthreads = -1, max_mem_size = "100G")
 
-    cols <- c("avg", "b_dist", "f_dist", "b_meth", "f_meth")
+    cols <- c("methylation", "b_dist", "f_dist", "b_meth", "f_meth")
 
     trainingFrame <- as.h2o(training)
+    # train_im <- read.csv("/home/nchai/im_training.bed", sep = "\t")
 
+    # train_im$methylation <- train_im$meth.y * 100
+
+    # trainingFrame <- as.h2o(train_im)
     # splits <- h2o.splitFrame(data = fullFrame, ratios = 0.80)
 
     # # Create a training set from the 1st dataset in the split
@@ -193,18 +208,21 @@ h2oTraining <- function(lf, maxTime, maxModels, dist, streaming) {
     # quit()
     # h2o.shutdown(prompt = FALSE)
     # quit()
-    y <- "avg"
+    y <- "methylation"
     x <- c("b_dist", "f_dist", "b_meth", "f_meth") #, "b_corr", "f_corr"
 
-    aml <- h2o.automl(x = x, y = y, max_runtime_secs=maxTime, max_models=maxModels, seed=1, training_frame = trainingFrame, nfolds = 5, sort_metric = "MAE", verbosity = "debug", distribution = "gamma") # nfolds = 5, ,  , leaderboard_frame = lbFrame, stopping_metric = "MAE", monotone_constraints = list(f_meth = 1) , stopping_tolerance = 0.01
+    aml <- h2o.automl(x = x, y = y, max_runtime_secs=maxTime, seed=1234, training_frame = trainingFrame, sort_metric = "MAE", verbosity = "debug") # leaderboard_frame = lbFrame, stopping_metric = "MAE", monotone_constraints = list(f_meth = 1) , stopping_tolerance = 0.01 , distribution = "gamma", nfolds = 5, max_models=NULL, 
 
     lb <- h2o.get_leaderboard(object = aml, extra_columns = 'ALL')
     print(lb, n = nrow(lb)) 
 
     prediction <- h2o.predict(aml@leader, testingFrame)
     prediction_df <- as.data.frame(prediction) # results
+    print(head(prediction_df))
     to_predict_df <- as.data.frame(to_predict_lf$select(list("chr", "start"))$collect()) # the coords and other site information
-    imputed_lf <- as_polars_lf(cbind(to_predict_df, prediction_df))$cast(list(start = pl$UInt64))
+    print(head(to_predict_df))
+    imputed_lf <- as_polars_lf(cbind(to_predict_df, prediction_df))$cast(list(start = pl$UInt64))$with_columns(imputed = pl$lit("yes"))
+    print(imputed_lf$fetch(100))
     # print(head(prediction_df))
     # print(head(to_predict_df))
     # print(imputed_lf$fetch(10))
@@ -222,21 +240,44 @@ h2oTraining <- function(lf, maxTime, maxModels, dist, streaming) {
     # print(head(a))
     # h2o.shutdown(prompt = FALSE)
     # quit()
+    lf <- lf$drop("methylation")
+
+    # print(class(prediction))
+    # print(class(prediction_df))
+    # print(head(prediction_df))
+    # h2o.shutdown(prompt = FALSE)
+    # quit()
+    # prediction_lf <- as_polars_df(prediction)$lazy()
+    # prediction_lf <- as.vector(prediction)
+    # print(to_predict_lf)
+    # imputed_lf <- to_predict_lf$join(prediction_lf, how="full", left_on = "avg", right_on = "predict", join_nulls = TRUE)
+    # imputed_lf <- to_predict_lf$with_columns(predictions = prediction_lf$select("predict"))
+    # print(head(a))
+    # h2o.shutdown(prompt = FALSE)
+    # quit()
     res <- (
         lf$join(imputed_lf, on = c("chr", "start"), how="full", coalesce=TRUE)
-        $with_columns(pl$col("avg")$fill_null(pl$col("predict")), pl$col("sample")$fill_null(pl$lit("imputed")))
         $with_columns(
-            avg=pl$col("avg")$clip(0, 100)
+            pl$col("avg")$fill_null(pl$col("predict")),
+            sample = pl$when(pl$col("imputed") == "yes")$then(pl$lit("imputed"))$otherwise("sample")
+        ) # , pl$col("sample")$fill_null(pl$lit("imputed"))
+        $with_columns(
+            methylation = pl$col("avg")$clip(0, 100)
         )
     )
-    
-    if (dist > 0) {
-        res <- res$filter((pl$col("f_dist") <= dist) & (pl$col("b_dist") <= dist))
-    }
+    # res$collect()$write_csv("/home/nchai/check_results.bed", separator = "\t")
+    # quit()
 
-    res <- res$select(list("chr", "start", "end", "strand", "sample", "avg"))
+    print(head(as.data.frame(res$fetch(1000))))
+    # if (dist > 0) {
+    #     res <- res$filter((pl$col("f_dist") <= dist) & (pl$col("b_dist") <= dist))
+    # }
 
-    # print(res$fetch(10000))
+    res <- res$select(list("chr", "start", "end", "strand", "sample", "methylation", "total_coverage"))
+    # print(res$fetch(100))
+    # quit()
+
+    print(res$fetch(1000))
     # quit()
 
     h2o.removeAll()

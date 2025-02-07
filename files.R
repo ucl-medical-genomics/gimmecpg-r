@@ -15,7 +15,7 @@ collapse_strands <- function(bed) {
     merged <- (
         joint$with_columns(
             pl$min_horizontal("start", "start_right")$alias("start"),
-            pl$col(c("percent_methylated_right", "coverage_right", "percent_methylated", "coverage"))
+            pl$col(c("coverage_right", "coverage")) # "percent_methylated_right", "percent_methylated", 
             $fill_null(0)
             $cast(pl$UInt64)
         )$with_columns(
@@ -72,27 +72,21 @@ read_files <- function(file, mincov, collapse) {
 
     if (collapse == TRUE) {
         data <- collapse_strands(bed)
-        data <- data$with_columns(
-            maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest")
-        ) # calculate max coverage quantile
     } else {
         data <- bed$with_columns(pl$col("percent_methylated")$alias("avg"), 
-                pl$col("coverage")$alias("aveg_coverage"),
-                maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest") # calculate max coverage quantile
+                pl$col("coverage")$alias("total_coverage")
+                # ,
+                # maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest") # calculate max coverage quantile
         ) 
     }
 
-    quants <- data$with_columns(
-        over=pl$col("total_coverage") - pl$col("maxQuant")
-    ) # identify rows that go over 99 quantile
-
     data_cov_filt <- (
-        quants$filter((pl$col("total_coverage") >= mincov) & (pl$col("over") < 0)) # filter by coverage 
-        $with_columns(pl$lit(name)$alias("sample"))
-        $select(list("chr", "start", "strand", "avg", "sample"))
-        $cast(list(chr = pl$String, start = pl$UInt64, strand = pl$String, avg = pl$Float64, sample = pl$String))
+        data$with_columns(pl$lit(name)$alias("sample"))
+        $select(list("chr", "start", "strand", "avg", "sample", "total_coverage"))
+        $cast(list(chr = pl$String, start = pl$UInt64, strand = pl$String, avg = pl$Float64, sample = pl$String, total_coverage = pl$UInt64))
     )
-
+    # data_cov_filt$collect()$write_csv("/home/nchai/NiuzhengChai/gimmecpg/data/newmerged_S1_W1_cpg.bed", separator = "\t")
+    # quit()
     return(data_cov_filt)
 }
 
