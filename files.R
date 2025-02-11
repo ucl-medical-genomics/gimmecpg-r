@@ -15,7 +15,7 @@ collapse_strands <- function(bed) {
     merged <- (
         joint$with_columns(
             pl$min_horizontal("start", "start_right")$alias("start"),
-            pl$col(c("coverage_right", "coverage")) # "percent_methylated_right", "percent_methylated", 
+            pl$col(c("coverage_right", "coverage")) 
             $fill_null(0)
             $cast(pl$UInt64)
         )$with_columns(
@@ -75,8 +75,6 @@ read_files <- function(file, mincov, collapse) {
     } else {
         data <- bed$with_columns(pl$col("percent_methylated")$alias("avg"), 
                 pl$col("coverage")$alias("total_coverage")
-                # ,
-                # maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest") # calculate max coverage quantile
         ) 
     }
 
@@ -85,8 +83,7 @@ read_files <- function(file, mincov, collapse) {
         $select(list("chr", "start", "strand", "avg", "sample", "total_coverage"))
         $cast(list(chr = pl$String, start = pl$UInt64, strand = pl$String, avg = pl$Float64, sample = pl$String, total_coverage = pl$UInt64))
     )
-    # data_cov_filt$collect()$write_csv("/home/nchai/NiuzhengChai/gimmecpg/data/newmerged_S1_W1_cpg.bed", separator = "\t")
-    # quit()
+    
     return(data_cov_filt)
 }
 
