@@ -3,17 +3,42 @@ library(polars)
 
 
 fast_impute <- function(lf, dist) {
-
+    
+    lf <- lf$drop("methylation") # remove the old methylation column
+    
     if (dist > 0) {
         lf <- lf$filter((pl$col("f_dist") <= dist) & (pl$col("b_dist") <= dist))
     }
 
-    imputed <- lf$with_columns(
-        pl$col("methylation")$fill_null(
-            (pl$col("b_meth") * pl$col("f_dist") + pl$col("f_meth") * pl$col("b_dist"))
-            / pl$sum_horizontal("f_dist", "b_dist")
-        ),
-        pl$col("sample")$fill_null(pl$lit("imputed"))
+    neighbours_added <- (
+        lf$with_columns(
+            pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("b_start"),
+            pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("f_start"),
+            pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("b_meth"),
+            pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("f_meth")
+        )
+        $with_columns(
+            pl$col(c("f_start", "f_meth"))$backward_fill()$over("chr"),
+            pl$col(c("b_start", "b_meth"))$forward_fill()$over("chr")
+        )
+        $with_columns(
+            (pl$col("start") - pl$col("b_start"))$alias("b_dist"),
+            (pl$col("f_start") - pl$col("start"))$alias("f_dist")
+        )
+    )
+
+    imputed <- (neighbours_added$with_columns(
+            sample = pl$when(pl$col("avg")$is_null())$then(pl$lit("imputed"))$otherwise("sample")
+        )
+        $with_columns(
+            pl$col("avg")$fill_null(
+                (pl$col("b_meth") * pl$col("f_dist") + pl$col("f_meth") * pl$col("b_dist"))
+                / pl$sum_horizontal("f_dist", "b_dist")
+            )
+        )
+        $with_columns(
+            methylation = pl$col("avg")
+        )
     )
 
     imputed <- imputed$select(list("chr", "start", "end", "strand", "sample", "methylation", "total_coverage"))
@@ -69,7 +94,7 @@ h2oTraining <- function(lf, maxTime, maxModels, dist, streaming) {
     test <- h2oPrep(lf, dist, streaming)[[2]] # to_predict
     to_predict_lf <- h2oPrep(lf, dist, streaming)[[3]] # to_predict_lf
 
-    h2o.init(port = 54321, nthreads = -1, max_mem_size = "100G")
+    h2o.init(port = 54321, nthreads = 24, max_mem_size = "100G")
 
     cols <- c("methylation", "b_dist", "f_dist", "b_meth", "f_meth")
 

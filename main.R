@@ -119,7 +119,7 @@ if (identical(bed_paths, character(0))) {
 print(paste("Merge methylation sites on opposite strands =", opt$collapse))
 print(paste("Coverage cutoff at", opt$minCov))
 
-lf_list <- lapply(bed_paths, read_files, mincov = opt$minCov, collapse = opt$collapse)
+lf_list <- lapply(bed_paths, read_files, collapse = opt$collapse)
 
 
 ##########################
@@ -132,7 +132,7 @@ if (!is.na(opt$exclude)) {
     print("No blacklisted regions provided; all autosomal CG sites considered")
 }
 
-missing <- lapply(lf_list, missing_sites, ref = opt$ref, blacklist = opt$exclude)
+missing <- lapply(lf_list, missing_sites, ref = opt$ref, blacklist = opt$exclude, mincov = opt$minCov)
 
 print("Identified missing sites")
 

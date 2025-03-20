@@ -44,7 +44,7 @@ align_to_reference <- function(bed, ref, blacklist) {
 }
 
 
-missing_sites <- function(bed, ref, blacklist) {
+missing_sites <- function(bed, ref, blacklist, mincov) {
 
     aligned <- align_to_reference(bed, ref, blacklist)
    
@@ -62,21 +62,16 @@ missing_sites <- function(bed, ref, blacklist) {
         $with_columns(
             (pl$col("start") - pl$col("b_start"))$alias("b_dist"),
             (pl$col("f_start") - pl$col("start"))$alias("f_dist")
-        )$with_columns(
-            maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest")
-        )$with_columns(
-            over=pl$col("total_coverage") - pl$col("maxQuant")
-            # identify rows that go over 99 quantile
         )
     )
 
 
     missing_sites_defined <- neighbours_added$with_columns(
         methylation = pl$col("avg"),
-        avg = pl$when(pl$col("total_coverage") < 10)$then(NA)$when(pl$col("over") >= 0)$then(NA)$otherwise("avg") # 
+        avg = pl$when(pl$col("total_coverage") < mincov)$then(NA)$when(pl$col("over") >= 0)$then(NA)$otherwise("avg") # 
         # "avg" is the column where we check if imputation needed or not; "methylation" column is final methylation value
     )
-    
+
     return(missing_sites_defined)
 
 }

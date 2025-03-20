@@ -36,7 +36,7 @@ collapse_strands <- function(bed) {
 }
 
 
-read_files <- function(file, mincov, collapse) {
+read_files <- function(file, collapse) {
 
     name <- basename(file)
     name <- gsub(pattern = ".bed", "", name)
@@ -79,8 +79,13 @@ read_files <- function(file, mincov, collapse) {
     }
 
     data_cov_filt <- (
-        data$with_columns(pl$lit(name)$alias("sample"))
-        $select(list("chr", "start", "strand", "avg", "sample", "total_coverage"))
+        data$with_columns(
+            maxQuant=pl$col("total_coverage")$quantile(0.999, "nearest")
+        )$with_columns(
+            over=pl$col("total_coverage") - pl$col("maxQuant")
+            # identify rows that go over 99 quantile
+        )$with_columns(pl$lit(name)$alias("sample"))
+        $select(list("chr", "start", "strand", "avg", "sample", "total_coverage", "over"))
         $cast(list(chr = pl$String, start = pl$UInt64, strand = pl$String, avg = pl$Float64, sample = pl$String, total_coverage = pl$UInt64))
     )
     
