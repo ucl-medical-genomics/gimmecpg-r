@@ -96,8 +96,6 @@ h2oTraining <- function(lf, maxTime, maxModels, dist, streaming) {
 
     h2o.init(port = 54321, nthreads = 24, max_mem_size = "100G")
 
-    cols <- c("methylation", "b_dist", "f_dist", "b_meth", "f_meth")
-
     trainingFrame <- as.h2o(training)
 
     testingFrame <- as.h2o(test)
