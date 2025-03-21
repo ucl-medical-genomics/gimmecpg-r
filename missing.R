@@ -33,7 +33,7 @@ align_to_reference <- function(bed, ref, blacklist) {
                 pl$col("end")$cast(pl$dtypes$UInt64)
             )
             $select(list("chr", "start", "end"))
-        )$filter(!pl$col("chr")$is_in(c("Y", "X")))$join(blacklist, how = "anti", on = c("chr", "start"))
+        )$filter(!pl$col("chr")$is_in(c("Y", "X")))
         
     }
 
