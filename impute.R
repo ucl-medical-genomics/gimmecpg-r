@@ -4,30 +4,11 @@ library(polars)
 
 fast_impute <- function(lf, dist) {
     
-    lf <- lf$drop("methylation") # remove the old methylation column
-    
     if (dist > 0) {
         lf <- lf$filter((pl$col("f_dist") <= dist) & (pl$col("b_dist") <= dist))
     }
 
-    neighbours_added <- (
-        lf$with_columns(
-            pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("b_start"),
-            pl$when(pl$col("avg")$is_not_null())$then(pl$col("start"))$alias("f_start"),
-            pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("b_meth"),
-            pl$when(pl$col("avg")$is_not_null())$then(pl$col("avg"))$alias("f_meth")
-        )
-        $with_columns(
-            pl$col(c("f_start", "f_meth"))$backward_fill()$over("chr"),
-            pl$col(c("b_start", "b_meth"))$forward_fill()$over("chr")
-        )
-        $with_columns(
-            (pl$col("start") - pl$col("b_start"))$alias("b_dist"),
-            (pl$col("f_start") - pl$col("start"))$alias("f_dist")
-        )
-    )
-
-    imputed <- (neighbours_added$with_columns(
+    imputed <- (lf$with_columns(
             sample = pl$when(pl$col("avg")$is_null())$then(pl$lit("imputed"))$otherwise("sample")
         )
         $with_columns(

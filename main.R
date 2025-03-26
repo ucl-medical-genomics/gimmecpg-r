@@ -132,7 +132,7 @@ if (!is.na(opt$exclude)) {
     print("No blacklisted regions provided; all autosomal CG sites considered")
 }
 
-missing <- lapply(lf_list, missing_sites, ref = opt$ref, blacklist = opt$exclude, mincov = opt$minCov)
+missing <- lapply(lf_list, missing_sites, ref = opt$ref, blacklist = opt$exclude, mincov = opt$minCov, ml = opt$machineLearning)
 
 print("Identified missing sites")
 
