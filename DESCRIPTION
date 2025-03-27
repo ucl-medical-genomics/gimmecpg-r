@@ -1,0 +1,31 @@
+Package: gimmecpg
+Title: A CLI Tool for GIMMEcpg
+Version: 0.0.0.9000
+Authors@R: 
+    person("Ismail", "Moghul", "ucbtmog@ucl.ac.uk", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0003-3653-2327")), 
+    person("Niuzheng", "Chai", "niuzheng.chai.21@ucl.ac.uk", role = c("aut", "cre"),
+           comment = c(ORCID = "0009-0001-0144-9737")), 
+    person("Nikolas", "Pontikos", "n.pontikos@ucl.ac.uk", role = c("fnd"),
+           comment = c(ORCID = "0000-0003-1782-4711")), 
+    person("Alison", "Hardcastle", "a.hardcastle@ucl.ac.uk", role = c("fnd"),
+           comment = c(ORCID = "0000-0002-0038-6770")),
+    person("Javier", "Herrero", "javier.herrero@ucl.ac.uk", role = c("aut", "ctb"),
+           comment = c(ORCID = "0000-0001-7313-717X")), 
+    person("Stephan", "Beck", "s.beck@ucl.ac.uk", role = c("aut", "fnd"),
+           comment = c(ORCID = "0000-0001-5290-2151")), 
+Description: A command line tool for imputation of Whole Genome Bisulfite Sequencing data.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports:
+    optparse,
+    polars,
+    h2o
+Collate:
+    'files.R'
+    'missing.R'
+    'impute.R'
+    'gimmecpg.R'
